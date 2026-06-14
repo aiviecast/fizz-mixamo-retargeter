@@ -1,0 +1,5 @@
+build/
+*.wasm
+*.cwasm
+fizz-mixamo-retargeter
+.almide/

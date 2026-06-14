@@ -1,0 +1,69 @@
+// fizz_mixamo_retargeter — Mixamo アニメを VRM ボーンにリターゲットする回転計算コア。
+//
+// 責務 (一行): ソースボーンの rest pose とキーフレーム四元数から、VRM ボーンの回転
+// 四元数を計算する。各ボーンの rotation track のキーフレームごとに:
+//
+//   q' = parentRestWorld · q · restWorld⁻¹
+//
+// (親の rest world 回転で前から、自身の rest world 回転の逆で後ろから挟む)。
+// VRM 0.x は座標系が異なるので軸フリップ (x,z を反転)。Hips の position track は
+// リグ身長比でスケール + 同じフリップ。
+//
+// 計算 (四元数代数) は純 Almide。FBX clip の読み出し / VRM ボーン階層からの rest
+// world 回転取得 / AnimationClip 構築 (Three.js の I/O) は JS グルーが担当する。
+// lipsync / idle / gesture / camera と同じく計算コアを Almide で 1 回書き、native と
+// wasm の両方で使う。移植元: openaituber src/vrm/mixamo.ts。
+
+// 四元数 (x,y,z,w)。
+type Quat = { x: Float, y: Float, z: Float, w: Float }
+
+// Hamilton 積 a·b。
+fn mul(a: Quat, b: Quat) -> Quat = Quat {
+  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+}
+
+// 逆四元数 (共役 / ノルム²)。単位四元数なら共役そのもの。
+fn inverse(q: Quat) -> Quat = {
+  let n2 = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w
+  let inv = if n2 == 0.0 then 0.0 else 1.0 / n2
+  Quat { x: 0.0 - q.x * inv, y: 0.0 - q.y * inv, z: 0.0 - q.z * inv, w: q.w * inv }
+}
+
+// リターゲット回転: q' = parent · q · rest_inv。
+// parent = 親ボーンの rest world 回転、rest_inv = 自身の rest world 回転の逆。
+fn remap(parent: Quat, q: Quat, rest_inv: Quat) -> Quat = mul(mul(parent, q), rest_inv)
+
+// VRM 0.x の軸フリップ (x,z 反転)。VRM 1.0 は恒等。
+fn vrm0_flip(q: Quat) -> Quat = Quat { x: 0.0 - q.x, y: q.y, z: 0.0 - q.z, w: q.w }
+
+// リターゲット + (VRM0 なら) フリップ。
+fn retarget(parent: Quat, q: Quat, rest_inv: Quat, vrm0: Bool) -> Quat = {
+  let r = remap(parent, q, rest_inv)
+  if vrm0 then vrm0_flip(r) else r
+}
+
+// Hips position の 1 成分。idx: 0=x,1=y,2=z。scale でリグ身長比に合わせ、VRM0 は x,z 反転。
+fn hips_component(idx: Int, x: Float, y: Float, z: Float, scale: Float, vrm0: Bool) -> Float = {
+  let v = match idx { 0 => x, 1 => y, 2 => z, _ => 0.0 } * scale
+  if vrm0 and (idx == 0 or idx == 2) then 0.0 - v else v
+}
+
+// retarget の float 版 (wasm bridge が Quat を構築せず float だけで呼べるように)。
+// comp: 0=x,1=y,2=z,3=w。p* = parent rest world, q* = keyframe, ri* = rest world 逆。
+fn retarget_component(
+  comp: Int, vrm0: Bool,
+  px: Float, py: Float, pz: Float, pw: Float,
+  qx: Float, qy: Float, qz: Float, qw: Float,
+  rix: Float, riy: Float, riz: Float, riw: Float,
+) -> Float = {
+  let r = retarget(
+    Quat { x: px, y: py, z: pz, w: pw },
+    Quat { x: qx, y: qy, z: qz, w: qw },
+    Quat { x: rix, y: riy, z: riz, w: riw },
+    vrm0,
+  )
+  match comp { 0 => r.x, 1 => r.y, 2 => r.z, _ => r.w }
+}

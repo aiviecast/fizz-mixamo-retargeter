@@ -1,0 +1,63 @@
+// wasm エントリ — ブラウザの FBX リターゲット (ロード時) から呼ぶ。
+//
+// ボーンごとに mx_set_bone で rest pose (親の rest world 回転 + 自身の rest world
+// 回転の逆) を一度セットし、各キーフレームで mx_remap を呼んで VRM 回転を得る。
+// rest pose は per-bone 定数なので globals に持ち、per-keyframe の引数を q だけに減らす。
+// Hips の position は mx_hips。
+//
+// 全エクスポートは Float 入出力 (RawPtr / buffer 不要)。comp / vrm0 も Float で渡す。
+// codegen の tree-shaking 対策で main から全 export を参照してルート化 (almide#440)。
+//
+// ビルド: almide build src/bridge.almd --target wasm -o build/mixamo.wasm
+
+import self as mx
+import float
+
+// 現在のボーンの rest pose: 親 rest world 回転 (p*) と自身 rest world 回転の逆 (ri*)。
+var g_px: Float = 0.0
+var g_py: Float = 0.0
+var g_pz: Float = 0.0
+var g_pw: Float = 1.0
+var g_rix: Float = 0.0
+var g_riy: Float = 0.0
+var g_riz: Float = 0.0
+var g_riw: Float = 1.0
+
+@export(wasm, "mx_set_bone")
+fn mx_set_bone(
+  px: Float, py: Float, pz: Float, pw: Float,
+  rix: Float, riy: Float, riz: Float, riw: Float,
+) -> Unit = {
+  g_px = px
+  g_py = py
+  g_pz = pz
+  g_pw = pw
+  g_rix = rix
+  g_riy = riy
+  g_riz = riz
+  g_riw = riw
+  ()
+}
+
+// キーフレーム四元数 q を VRM 回転に remap し、成分 comp (0=x,1=y,2=z,3=w) を返す。
+// vrm0 > 0.5 で VRM 0.x の軸フリップを適用。
+@export(wasm, "mx_remap")
+fn mx_remap(comp: Float, vrm0: Float, qx: Float, qy: Float, qz: Float, qw: Float) -> Float =
+  mx.retarget_component(
+    float.to_int(comp), vrm0 > 0.5,
+    g_px, g_py, g_pz, g_pw,
+    qx, qy, qz, qw,
+    g_rix, g_riy, g_riz, g_riw,
+  )
+
+// Hips position の成分 comp (0=x,1=y,2=z)。scale でリグ身長比、vrm0 で x,z 反転。
+@export(wasm, "mx_hips")
+fn mx_hips(comp: Float, vrm0: Float, x: Float, y: Float, z: Float, scale: Float) -> Float =
+  mx.hips_component(float.to_int(comp), x, y, z, scale, vrm0 > 0.5)
+
+effect fn main() -> Unit = {
+  mx_set_bone(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
+  let _a = mx_remap(0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+  let _b = mx_hips(0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+  ()
+}

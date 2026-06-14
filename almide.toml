@@ -1,0 +1,4 @@
+[package]
+name = "fizz_mixamo_retargeter"
+version = "0.1.0"
+description = "Fizz Mixamo retargeter — quaternion rotation remap (q' = parentRestWorld * q * restWorld^-1) + VRM0 axis flip + Hips position scale. One Almide core, native + wasm."

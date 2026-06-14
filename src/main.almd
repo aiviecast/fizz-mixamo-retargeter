@@ -1,0 +1,34 @@
+// CLI エントリポイント (native) — リターゲット回転の確認 / オフライン検証。
+//
+// デモ: サンプルのキーフレーム四元数 (~60° about X) を、identity rest pose で
+// remap した結果を VRM1 / VRM0 両方で NDJSON 出力する。
+//   - identity rest pose では remap は恒等変換 → VRM1 はキーフレームそのまま
+//   - VRM0 は x,z 軸が反転する
+//
+// すべて retarget_component (Float 返し) で呼ぶので record をローカル束縛せず、
+// almide v0.27.6 でも安全 (mod の Quat 構築は関数内のみ)。同じ計算コアが wasm 側でも走る。
+
+import self as mx
+import json
+import value
+
+// サンプルキーフレーム (~60° about X) を identity rest pose で remap した成分。
+local fn rc(comp: Int, vrm0: Bool) -> Float =
+  mx.retarget_component(comp, vrm0, 0.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.0, 0.866, 0.0, 0.0, 0.0, 1.0)
+
+effect fn main() -> Unit = {
+  println(json.stringify(value.object([
+    ("vrm1", value.object([
+      ("x", value.float(rc(0, false))),
+      ("y", value.float(rc(1, false))),
+      ("z", value.float(rc(2, false))),
+      ("w", value.float(rc(3, false))),
+    ])),
+    ("vrm0", value.object([
+      ("x", value.float(rc(0, true))),
+      ("y", value.float(rc(1, true))),
+      ("z", value.float(rc(2, true))),
+      ("w", value.float(rc(3, true))),
+    ])),
+  ])))
+}

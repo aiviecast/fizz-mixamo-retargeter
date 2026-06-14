@@ -1,0 +1,55 @@
+import self as mx
+
+local fn near(a: Float, b: Float) -> Bool = {
+  let d = a - b
+  if d < 0.0 then (0.0 - d) < 0.0001 else d < 0.0001
+}
+local fn qeq(q: mx.Quat, x: Float, y: Float, z: Float, w: Float) -> Bool =
+  near(q.x, x) and near(q.y, y) and near(q.z, z) and near(q.w, w)
+
+local fn ident() -> mx.Quat = mx.Quat { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+
+test "mul by identity is identity" {
+  let q = mx.Quat { x: 0.1, y: 0.2, z: 0.3, w: 0.9 }
+  assert(qeq(mx.mul(q, ident()), 0.1, 0.2, 0.3, 0.9))
+  assert(qeq(mx.mul(ident(), q), 0.1, 0.2, 0.3, 0.9))
+}
+
+test "Hamilton product: 180°X · 180°Y = 180°Z" {
+  let qx = mx.Quat { x: 1.0, y: 0.0, z: 0.0, w: 0.0 }
+  let qy = mx.Quat { x: 0.0, y: 1.0, z: 0.0, w: 0.0 }
+  assert(qeq(mx.mul(qx, qy), 0.0, 0.0, 1.0, 0.0))
+}
+
+test "q · inverse(q) = identity (unit quat)" {
+  let q = mx.Quat { x: 0.0, y: 0.6, z: 0.8, w: 0.0 }   // norm² = 1
+  assert(qeq(mx.mul(q, mx.inverse(q)), 0.0, 0.0, 0.0, 1.0))
+}
+
+test "remap with identity rest pose returns q unchanged" {
+  let q = mx.Quat { x: 0.1, y: 0.2, z: 0.3, w: 0.9 }
+  assert(qeq(mx.remap(ident(), q, ident()), 0.1, 0.2, 0.3, 0.9))
+}
+
+test "remap collapses parent against matching rest" {
+  // parent = rot, rest = rot → rest_inv = rot⁻¹; identity keyframe → identity.
+  let rot = mx.Quat { x: 0.0, y: 0.7071, z: 0.0, w: 0.7071 }  // ~90° Y
+  let rest_inv = mx.inverse(rot)
+  assert(qeq(mx.remap(rot, ident(), rest_inv), 0.0, 0.0, 0.0, 1.0))
+}
+
+test "VRM0 flip negates x and z" {
+  let q = mx.Quat { x: 1.0, y: 2.0, z: 3.0, w: 4.0 }
+  assert(qeq(mx.vrm0_flip(q), 0.0 - 1.0, 2.0, 0.0 - 3.0, 4.0))
+  // retarget with vrm0=true applies the flip
+  assert(near(mx.retarget_component(0, true, 0.0,0.0,0.0,1.0, 0.5,0.0,0.0,0.866, 0.0,0.0,0.0,1.0), 0.0 - 0.5))
+  // vrm0=false: no flip
+  assert(near(mx.retarget_component(0, false, 0.0,0.0,0.0,1.0, 0.5,0.0,0.0,0.866, 0.0,0.0,0.0,1.0), 0.5))
+}
+
+test "hips_component: scale and VRM0 axis flip" {
+  assert(near(mx.hips_component(1, 1.0, 2.0, 3.0, 10.0, false), 20.0))  // y * scale
+  assert(near(mx.hips_component(0, 1.0, 2.0, 3.0, 10.0, true), 0.0 - 10.0))  // x flipped
+  assert(near(mx.hips_component(2, 1.0, 2.0, 3.0, 10.0, true), 0.0 - 30.0))  // z flipped
+  assert(near(mx.hips_component(0, 1.0, 2.0, 3.0, 10.0, false), 10.0))  // x no flip
+}
