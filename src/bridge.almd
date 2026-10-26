@@ -44,7 +44,7 @@ fn mx_set_bone(
 @export(wasm, "mx_remap")
 fn mx_remap(comp: Float, vrm0: Float, qx: Float, qy: Float, qz: Float, qw: Float) -> Float =
   mx.retarget_component(
-    float.to_int(comp), vrm0 > 0.5,
+    int.from_saturating(comp), vrm0 > 0.5,
     g_px, g_py, g_pz, g_pw,
     qx, qy, qz, qw,
     g_rix, g_riy, g_riz, g_riw,
@@ -53,7 +53,7 @@ fn mx_remap(comp: Float, vrm0: Float, qx: Float, qy: Float, qz: Float, qw: Float
 // Hips position の成分 comp (0=x,1=y,2=z)。scale でリグ身長比、vrm0 で x,z 反転。
 @export(wasm, "mx_hips")
 fn mx_hips(comp: Float, vrm0: Float, x: Float, y: Float, z: Float, scale: Float) -> Float =
-  mx.hips_component(float.to_int(comp), x, y, z, scale, vrm0 > 0.5)
+  mx.hips_component(int.from_saturating(comp), x, y, z, scale, vrm0 > 0.5)
 
 effect fn main() -> Unit = {
   mx_set_bone(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
